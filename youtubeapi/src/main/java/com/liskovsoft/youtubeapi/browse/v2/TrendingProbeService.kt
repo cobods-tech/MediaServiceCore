@@ -1,5 +1,7 @@
 package com.liskovsoft.youtubeapi.browse.v2
 
+import com.google.gson.JsonElement
+import com.google.gson.JsonParser
 import com.liskovsoft.googlecommon.common.helpers.RetrofitHelper
 import com.liskovsoft.googlecommon.common.helpers.RetrofitOkHttpHelper
 import com.liskovsoft.youtubeapi.common.helpers.AppClient
@@ -10,12 +12,16 @@ import com.liskovsoft.youtubeapi.common.helpers.QueryBuilder
  * Raw HTTP observation for the CCTV trending-source spike.
  *
  * This deliberately bypasses the production getTrending() path and performs one request only.
- * Callers own scheduling, backoff, parsing, playback checks, and acceptance decisions.
+ * Callers own scheduling, backoff, playback checks, and acceptance decisions.
  */
 data class TrendingProbeHttpResponse(
     val startedAtEpochMs: Long,
     val httpStatus: Int,
     val durationMs: Long,
+    val itemCount: Int,
+    val missingVideoIdCount: Int,
+    val visitorDataPresent: Boolean,
+    val videoIds: List<String>,
     val responseBody: String?,
     val errorBody: String?
 )
@@ -54,7 +60,7 @@ object TrendingProbeService {
             .setVisitorData(visitorData)
             .build()
 
-        return execute(query)
+        return execute(query, visitorData.isNotBlank())
     }
 
     /**
@@ -83,10 +89,10 @@ object TrendingProbeService {
             .setVisitorData(visitorData)
             .build()
 
-        return execute(query)
+        return execute(query, visitorData.isNotBlank())
     }
 
-    private fun execute(query: String): TrendingProbeHttpResponse {
+    private fun execute(query: String, visitorDataPresent: Boolean): TrendingProbeHttpResponse {
         val call = api.getBrowseResultRaw(query)
         // The diagnostic is anonymous; never attach the app's account authorization.
         RetrofitOkHttpHelper.addAuthSkip(call.request())
@@ -98,13 +104,48 @@ object TrendingProbeService {
 
         val body = response.body()?.use { it.string() }
         val error = response.errorBody()?.use { it.string() }
+        val (ids, missingIds) = extractVideoIds(body ?: error)
 
         return TrendingProbeHttpResponse(
             startedAtEpochMs = startedAtEpochMs,
             httpStatus = response.code(),
             durationMs = durationMs,
+            itemCount = ids.size + missingIds,
+            missingVideoIdCount = missingIds,
+            visitorDataPresent = visitorDataPresent,
+            videoIds = ids,
             responseBody = body,
             errorBody = error
         )
+    }
+
+    /**
+     * Counts videoRenderer/lockup videoId fields without assuming a particular Explore layout.
+     * This is a diagnostic count, not a claim that every returned video is a ranked item.
+     */
+    private fun extractVideoIds(raw: String?): Pair<List<String>, Int> {
+        if (raw.isNullOrBlank()) return emptyList<String>() to 0
+        return try {
+            val ids = LinkedHashSet<String>()
+            var missing = 0
+            fun visit(element: JsonElement?) {
+                if (element == null || element.isJsonNull) return
+                when {
+                    element.isJsonObject -> {
+                        val obj = element.asJsonObject
+                        if (obj.has("videoId")) {
+                            val id = runCatching { obj.get("videoId").asString }.getOrNull()
+                            if (id.isNullOrBlank()) missing++ else ids.add(id)
+                        }
+                        obj.entrySet().forEach { visit(it.value) }
+                    }
+                    element.isJsonArray -> element.asJsonArray.forEach { visit(it) }
+                }
+            }
+            visit(JsonParser().parse(raw))
+            ids.toList() to missing
+        } catch (_: Exception) {
+            emptyList<String>() to 0
+        }
     }
 }
