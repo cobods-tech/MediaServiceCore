@@ -5,6 +5,7 @@ import com.liskovsoft.googlecommon.common.converters.gson.WithGson
 import com.liskovsoft.googlecommon.common.helpers.DefaultHeaders
 import com.liskovsoft.youtubeapi.next.v2.gen.WatchNextResultContinuation
 import retrofit2.Call
+import okhttp3.ResponseBody
 import retrofit2.http.Body
 import retrofit2.http.Headers
 import retrofit2.http.POST
@@ -18,6 +19,15 @@ internal interface BrowseApi {
     )
     @POST("https://www.youtube.com/youtubei/v1/browse")
     fun getBrowseResult(@Body browseQuery: String?): Call<BrowseResult?>
+
+    /** CCTV(trending-probe): raw anonymous browse response for diagnostics only. */
+    @Headers(
+        "Content-Type: application/json",
+        "User-Agent: " + DefaultHeaders.USER_AGENT_WEB,
+        "Referer: https://www.youtube.com/"
+    )
+    @POST("https://www.youtube.com/youtubei/v1/browse")
+    fun getBrowseResultRaw(@Body browseQuery: String?): Call<ResponseBody>
 
     @Headers(
         "Content-Type: application/json",
