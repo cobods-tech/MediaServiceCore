@@ -13,6 +13,7 @@ import com.liskovsoft.youtubeapi.common.helpers.QueryBuilder
  * Callers own scheduling, backoff, parsing, playback checks, and acceptance decisions.
  */
 data class TrendingProbeHttpResponse(
+    val startedAtEpochMs: Long,
     val httpStatus: Int,
     val durationMs: Long,
     val responseBody: String?,
@@ -53,18 +54,53 @@ object TrendingProbeService {
             .setVisitorData(visitorData)
             .build()
 
+        return execute(query)
+    }
+
+    /**
+     * Fetch a response-provided continuation token while preserving the same region, language,
+     * visitor identity, and client used by the initial request.
+     */
+    @JvmStatic
+    @JvmOverloads
+    fun continueBrowse(
+        continuation: String,
+        regionCode: String,
+        visitorData: String,
+        languageCode: String = "zh-CN",
+        client: AppClient = AppClient.WEB
+    ): TrendingProbeHttpResponse {
+        require(continuation.isNotBlank()) { "continuation must not be blank" }
+        require(regionCode.matches(Regex("[A-Z]{2}"))) { "regionCode must be ISO-3166 alpha-2 uppercase" }
+        require(visitorData.isNotBlank()) { "visitorData must be supplied for a stable probe session" }
+        require(languageCode.isNotBlank()) { "languageCode must not be blank" }
+
+        val query = QueryBuilder(client)
+            .setType(PostDataType.Browse)
+            .setContinuationId(continuation)
+            .setCountry(regionCode)
+            .setLanguage(languageCode)
+            .setVisitorData(visitorData)
+            .build()
+
+        return execute(query)
+    }
+
+    private fun execute(query: String): TrendingProbeHttpResponse {
         val call = api.getBrowseResultRaw(query)
         // The diagnostic is anonymous; never attach the app's account authorization.
         RetrofitOkHttpHelper.addAuthSkip(call.request())
 
-        val startedAt = System.nanoTime()
+        val startedAtEpochMs = System.currentTimeMillis()
+        val startedAtNanos = System.nanoTime()
         val response = call.execute()
-        val durationMs = (System.nanoTime() - startedAt) / 1_000_000L
+        val durationMs = (System.nanoTime() - startedAtNanos) / 1_000_000L
 
         val body = response.body()?.use { it.string() }
         val error = response.errorBody()?.use { it.string() }
 
         return TrendingProbeHttpResponse(
+            startedAtEpochMs = startedAtEpochMs,
             httpStatus = response.code(),
             durationMs = durationMs,
             responseBody = body,
