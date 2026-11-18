@@ -43,15 +43,14 @@ object TrendingProbeService {
         regionCode: String,
         visitorData: String,
         params: String? = null,
-        languageCode: String = "zh-CN",
-        client: AppClient = AppClient.WEB
+        languageCode: String = "zh-CN"
     ): TrendingProbeHttpResponse {
         require(browseId.isNotBlank()) { "browseId must not be blank" }
         require(regionCode.matches(Regex("[A-Z]{2}"))) { "regionCode must be ISO-3166 alpha-2 uppercase" }
         require(visitorData.isNotBlank()) { "visitorData must be supplied for a stable probe session" }
         require(languageCode.isNotBlank()) { "languageCode must not be blank" }
 
-        val query = QueryBuilder(client)
+        val query = QueryBuilder(AppClient.WEB)
             .setType(PostDataType.Browse)
             .setBrowseId(browseId)
             .setParams(params)
@@ -73,15 +72,14 @@ object TrendingProbeService {
         continuation: String,
         regionCode: String,
         visitorData: String,
-        languageCode: String = "zh-CN",
-        client: AppClient = AppClient.WEB
+        languageCode: String = "zh-CN"
     ): TrendingProbeHttpResponse {
         require(continuation.isNotBlank()) { "continuation must not be blank" }
         require(regionCode.matches(Regex("[A-Z]{2}"))) { "regionCode must be ISO-3166 alpha-2 uppercase" }
         require(visitorData.isNotBlank()) { "visitorData must be supplied for a stable probe session" }
         require(languageCode.isNotBlank()) { "languageCode must not be blank" }
 
-        val query = QueryBuilder(client)
+        val query = QueryBuilder(AppClient.WEB)
             .setType(PostDataType.Browse)
             .setContinuationId(continuation)
             .setCountry(regionCode)
